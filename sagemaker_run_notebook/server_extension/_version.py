@@ -11,7 +11,4 @@
 # ANY KIND, either express or implied. See the License for the specific
 # language governing permissions and limitations under the License.
 
-version_info = (0, 22, 0)
-flag = ""
-
-__version__ = ".".join(map(str, version_info)) + flag
+__version__ = "0.22.0"
