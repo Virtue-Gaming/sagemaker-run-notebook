@@ -90,4 +90,5 @@ setuptools.setup(
             "jupyterlab~=1.2",
         ]
     },
+    include_package_data=True,
 )
