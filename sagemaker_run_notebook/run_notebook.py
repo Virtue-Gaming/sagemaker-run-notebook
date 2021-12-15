@@ -607,9 +607,14 @@ def ensure_session(session=None):
         session = boto3.session.Session()
     return session
 
+def get_lambda_name(session=None):
+    session = ensure_session(session)
+    ssm = session.client('ssm')
+
+    stage = ssm.get_parameter(Name='/Backend/Config/Sagemaker/CURRENT_STAGE')
+    return "vp-sagemaker-setup-{}-runNotebook".format(stage['Parameter']['Value'])
 
 code_file = "lambda_function.py"
-lambda_function_name = "vp-sagemaker-setup-backdev-runNotebook"
 lambda_description = (
     "A function to run Jupyter notebooks using SageMaker processing jobs"
 )
@@ -640,7 +645,7 @@ def create_lambda(role=None, session=None):
     while True:
         try:
             result = client.create_function(
-                FunctionName=lambda_function_name,
+                FunctionName=get_lambda_name(session),
                 Runtime="python3.8",
                 Role=role,
                 Handler="lambda_function.lambda_handler",
@@ -815,7 +820,7 @@ def invoke(
     client = session.client("lambda")
 
     result = client.invoke(
-        FunctionName=lambda_function_name,
+        FunctionName=get_lambda_name(session),
         InvocationType="RequestResponse",
         LogType="None",
         Payload=json.dumps(args).encode("utf-8"),
@@ -828,7 +833,12 @@ def invoke(
     return job
 
 
-RULE_PREFIX = "vp-sagemaker-setup-backdev-runNotebook-"
+def get_rule_prefix(session=None):
+    session = ensure_session(session)
+    ssm = session.client('ssm')
+
+    stage = ssm.get_parameter(Name='/Backend/Config/Sagemaker/CURRENT_STAGE')
+    return "vp-sagemaker-setup-{}-runNotebook-".format(stage['Parameter']['Value'])
 
 
 def schedule(
@@ -900,7 +910,7 @@ def schedule(
     session = ensure_session(session)
 
     # prepend a common prefix to the rule so it's easy to find notebook rules
-    prefixed_rule_name = RULE_PREFIX + rule_name
+    prefixed_rule_name = get_rule_prefix(session) + rule_name
 
     if "/" not in image:
         account = session.client("sts").get_caller_identity()["Account"]
@@ -952,7 +962,7 @@ def schedule(
     lambda_.add_permission(
         StatementId="EB-{}".format(rule_name),
         Action="lambda:InvokeFunction",
-        FunctionName=lambda_function_name,
+        FunctionName=get_lambda_name(session),
         Principal="events.amazonaws.com",
         SourceArn=rule_arn,
     )
@@ -960,7 +970,7 @@ def schedule(
     account = session.client("sts").get_caller_identity()["Account"]
     region = session.region_name
     target_arn = "arn:aws:lambda:{}:{}:function:{}".format(
-        region, account, lambda_function_name
+        region, account, get_lambda_name(session)
     )
 
     result = events.put_targets(
@@ -976,15 +986,15 @@ def unschedule(rule_name, session=None):
         rule_name (str): The name of the rule for CloudWatch Events (required).
         session (boto3.Session): The boto3 session to use. Will create a default session if not supplied (default: None).
     """
-    prefixed_rule_name = RULE_PREFIX + rule_name
-
     session = ensure_session(session)
+    
+    prefixed_rule_name = get_rule_prefix(session) + rule_name
     events = boto3.client("events")
     lambda_ = session.client("lambda")
 
     try:
         lambda_.remove_permission(
-            FunctionName=lambda_function_name, StatementId="EB-{}".format(rule_name)
+            FunctionName=get_lambda_name(session), StatementId="EB-{}".format(rule_name)
         )
     except botocore.exceptions.ClientError as ce:
         message = ce.response.get("Error", {}).get("Message", "Unknown error")
@@ -1006,11 +1016,12 @@ def describe_schedules(n=0, rule_prefix=None, session=None):
        rule_prefix (str): If not None, return only rules whose names begin with the prefix (default: None)
        session (boto3.Session): The boto3 session to use. Will create a default session if not supplied (default: None)."""
 
+    session = ensure_session(session)
+    RULE_PREFIX = get_rule_prefix(session)
     if not rule_prefix:
         rule_prefix = ""
     rule_prefix = RULE_PREFIX + rule_prefix
 
-    session = ensure_session(session)
     client = session.client("events")
     paginator = client.get_paginator("list_rules")
     page_iterator = paginator.paginate(NamePrefix=rule_prefix)
@@ -1049,8 +1060,10 @@ def describe_schedule(rule_name, rule_item=None, session=None):
         'input_path': 's3://sagemaker-us-west-2-123456789012/papermill_input/notebook-2020-11-02-19-49-24.ipynb',
         'output_prefix': 's3://sagemaker-us-west-2-123456789012/papermill_output'}
     """
-    rule_name = RULE_PREFIX + rule_name
     session = ensure_session(session)
+
+    RULE_PREFIX = get_rule_prefix(session)
+    rule_name = RULE_PREFIX + rule_name
     ev = session.client("events")
 
     if not rule_item:
