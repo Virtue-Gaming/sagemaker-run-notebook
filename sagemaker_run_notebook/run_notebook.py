@@ -607,12 +607,14 @@ def ensure_session(session=None):
         session = boto3.session.Session()
     return session
 
+
 def get_lambda_name(session=None):
     session = ensure_session(session)
-    ssm = session.client('ssm')
+    ssm = session.client("ssm")
 
-    stage = ssm.get_parameter(Name='/Backend/Config/Sagemaker/CURRENT_STAGE')
-    return "vp-sagemaker-setup-{}-runNotebook".format(stage['Parameter']['Value'])
+    stage = ssm.get_parameter(Name="/Backend/Config/Sagemaker/CURRENT_STAGE")
+    return "vp-sagemaker-setup-{}-runNotebook".format(stage["Parameter"]["Value"])
+
 
 code_file = "lambda_function.py"
 lambda_description = (
@@ -834,11 +836,9 @@ def invoke(
 
 
 def get_rule_prefix(session=None):
-    session = ensure_session(session)
-    ssm = session.client('ssm')
-
-    stage = ssm.get_parameter(Name='/Backend/Config/Sagemaker/CURRENT_STAGE')
-    return "vp-sagemaker-setup-{}-runNotebook-".format(stage['Parameter']['Value'])
+    lambdaName = get_lambda_name(session)
+    suffix = "-"
+    return lambdaName + suffix
 
 
 def schedule(
@@ -987,7 +987,7 @@ def unschedule(rule_name, session=None):
         session (boto3.Session): The boto3 session to use. Will create a default session if not supplied (default: None).
     """
     session = ensure_session(session)
-    
+
     prefixed_rule_name = get_rule_prefix(session) + rule_name
     events = boto3.client("events")
     lambda_ = session.client("lambda")
